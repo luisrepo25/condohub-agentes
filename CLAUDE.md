@@ -76,6 +76,7 @@ Los endpoints existen y ya están protegidos por rol; su lógica no: responden `
 - JWT de Keycloak: `app/infrastructure/keycloak.py`; `requiere_rol(...)` en `app/api/seguridad.py`; errores problem+json en `app/api/problemas.py` (mismo patrón que `services/ia`). Los estados de `app/api/schemas.py` salen de `db/mongo-init.js`.
 - Comandos reales (no hay `uv` en la máquina de Luis): `py -3.11 -m venv .venv`, `.venv\Scripts\python -m pip install -e ".[dev]"`, `... -m uvicorn app.main:app --port 8084`, `... -m pytest` (26 tests, incluido el de contrato con `agentes.yaml`), `... -m ruff check .`, `... -m mypy`.
 - Variables: `KEYCLOAK_ISSUER`, `KEYCLOAK_JWKS`. Por el gateway: `http://localhost:8080/agentes/salud` con Bearer.
+- Contenedor y CI (16/10/2026): `Dockerfile` en la raíz del repo; `infra/docker-compose.apps.yml` lo levanta junto al resto; `.github/workflows/ci.yml` corre las pruebas y publica la imagen en GHCR desde `main`.
 ## Código funcional protegido (obligatorio)
 
 Código en `main` con tests en verde **no se reescribe, refactoriza, renombra ni reformatea** si la tarea no lo pide explícitamente. Lo nuevo se agrega extendiendo (clases, métodos o archivos nuevos). Si es inevitable tocar código funcional, **detente antes de editar**, explica qué archivo/líneas y por qué, y espera confirmación; luego haz el mínimo diff. Nunca edites tests existentes para que pase código nuevo. Corre los tests antes y después: todo lo que pasaba debe seguir pasando. En el resumen, lista cada archivo existente que modificaste.
