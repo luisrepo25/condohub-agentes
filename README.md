@@ -14,4 +14,12 @@ Agente de monitoreo (G5), una vez al día con el programador de tareas, cron o n
 .venvScriptspython -m app.jobs.monitorear
 ```
 
+Servidor MCP (stdio) para clientes como Claude Desktop; con `PERSISTENCIA=mongo` las confirmaciones pendientes las ve la API:
+
+```bash
+.venv\Scripts\python -m app.infrastructure.mcp_server
+```
+
+Misiones con LLM: definir `GROQ_API_KEY`; sin ella `POST /misiones` responde 503.
+
 Arquitectura, reglas, estado y variables: `CLAUDE.md`.

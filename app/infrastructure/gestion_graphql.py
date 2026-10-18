@@ -7,10 +7,15 @@ from typing import Any
 
 import httpx
 
+from app.application.herramientas import EstadoCuentaDato
 from app.application.monitoreo import GestionNoDisponible, MorosoDato, PagoPendienteDato
 
 CONSULTA_MOROSOS = "{ morosos { unidadId deudaVencida expensasVencidas } }"
 CONSULTA_PAGOS_PENDIENTES = "{ pagosPendientes { id monto fechaPago } }"
+CONSULTA_ESTADO_DE_CUENTA = (
+    "query($unidadId: ID!) { estadoDeCuenta(unidadId: $unidadId) "
+    "{ unidadId codigo bloque deudaTotal deudaVencida expensasVencidas saldoAFavor moroso } }"
+)
 
 
 class GestionGraphQL:
@@ -21,10 +26,12 @@ class GestionGraphQL:
         self._token = token
         self._cliente = cliente or httpx.Client(timeout=tiempo_s)
 
-    def _consultar(self, consulta: str) -> dict[str, Any]:
+    def _consultar(self, consulta: str, variables: dict[str, Any] | None = None) -> dict[str, Any]:
         try:
             r = self._cliente.post(
-                self._url, json={"query": consulta}, headers={"Authorization": f"Bearer {self._token()}"}
+                self._url,
+                json={"query": consulta, "variables": variables or {}},
+                headers={"Authorization": f"Bearer {self._token()}"},
             )
         except httpx.HTTPError as e:
             raise GestionNoDisponible("No se pudo conectar con Gestión") from e
@@ -58,3 +65,19 @@ class GestionGraphQL:
             ]
         except (KeyError, TypeError, ValueError, InvalidOperation) as e:
             raise GestionNoDisponible("Respuesta de pagos pendientes con forma inesperada") from e
+
+    def estado_de_cuenta(self, unidad_id: str) -> EstadoCuentaDato:
+        try:
+            e = self._consultar(CONSULTA_ESTADO_DE_CUENTA, {"unidadId": unidad_id})["estadoDeCuenta"]
+            return EstadoCuentaDato(
+                str(e["unidadId"]),
+                str(e["codigo"]),
+                str(e["bloque"]),
+                Decimal(e["deudaTotal"]),
+                Decimal(e["deudaVencida"]),
+                int(e["expensasVencidas"]),
+                Decimal(e["saldoAFavor"]),
+                bool(e["moroso"]),
+            )
+        except (KeyError, TypeError, ValueError, InvalidOperation) as e:
+            raise GestionNoDisponible("Respuesta de estado de cuenta con forma inesperada") from e

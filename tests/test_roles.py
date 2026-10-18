@@ -1,4 +1,4 @@
-"""Matriz rol × endpoint. Permitido ⇒ llega a la lógica (hoy 501); no permitido ⇒ 403; sin token ⇒ 401.
+"""Matriz rol × endpoint. Permitido ⇒ llega a la lógica (ni 401 ni 403); no permitido ⇒ 403; sin token ⇒ 401.
 
 Misiones y confirmaciones son solo para ADMIN (G1, G2): residente y guardia no lanzan agentes.
 """
@@ -49,13 +49,16 @@ def test_solo_el_admin_usa_los_agentes(
         headers={"Authorization": f"Bearer {crear_token(rol)}"},
         **endpoint.kwargs,
     )
-    assert r.status_code == (501 if rol == "ADMIN" else 403), f"{rol} en {endpoint.nombre}"
+    if rol == "ADMIN":
+        assert r.status_code not in (401, 403), f"{rol} en {endpoint.nombre}"      # llega a la lógica
+    else:
+        assert r.status_code == 403, f"{rol} en {endpoint.nombre}"
     assert r.headers["content-type"].startswith("application/problem+json")
 
 
-def test_los_501_se_identifican_como_no_implementado(client: TestClient, crear_token: CrearToken) -> None:
+def test_G1_una_mision_inexistente_es_404(client: TestClient, crear_token: CrearToken) -> None:
     r = client.get(f"/misiones/{UUID_X}", headers={"Authorization": f"Bearer {crear_token('ADMIN')}"})
-    assert r.json()["code"] == "NO_IMPLEMENTADO"
+    assert r.status_code == 404 and r.headers["content-type"].startswith("application/problem+json")
 
 
 def test_solicitud_mal_formada_es_400_para_el_admin(client: TestClient, crear_token: CrearToken) -> None:

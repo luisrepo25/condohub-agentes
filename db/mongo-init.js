@@ -27,6 +27,8 @@ asegurar('misiones', {
     parametros: { bsonType: 'object', description: 'ej. {periodo: "2026-10", bloque: "B"}' },
     estado: { enum: ['EN_CURSO', 'ESPERANDO_CONFIRMACION', 'COMPLETADA', 'INCOMPLETA', 'CANCELADA', 'ERROR'] },
     iniciadaPor: { bsonType: 'string', description: 'sub del ADMIN' },
+    id: { bsonType: 'string', description: 'uuid con el que la API identifica la misión' },
+    conLlm: { bsonType: 'bool', description: 'false: solicitud llegada por MCP, sin bucle del LLM' },
     modeloLlm: { bsonType: 'string' },
     pasosEjecutados: { bsonType: ['int', 'long'], minimum: 0 },
     limitePasos: { bsonType: ['int', 'long'], minimum: 1, maximum: 50 },
@@ -37,6 +39,7 @@ asegurar('misiones', {
 });
 ag.misiones.createIndex({ estado: 1, creadaEn: -1 });
 ag.misiones.createIndex({ iniciadaPor: 1, creadaEn: -1 });
+ag.misiones.createIndex({ id: 1 }, { unique: true, partialFilterExpression: { id: { $type: 'string' } } });
 
 // ---------------------------------------------------------------------
 // confirmaciones (G2): toda herramienta que no es de lectura espera al ADMIN
@@ -45,9 +48,12 @@ asegurar('confirmaciones', {
   bsonType: 'object',
   required: ['misionId', 'herramienta', 'argumentos', 'riesgo', 'estado', 'creadaEn'],
   properties: {
-    misionId: { bsonType: 'objectId' },
+    misionId: { bsonType: ['objectId', 'string'], description: 'uuid de la misión (o ObjectId)' },
     herramienta: { bsonType: 'string' },
     argumentos: { bsonType: 'object' },
+    id: { bsonType: 'string', description: 'uuid con el que la API identifica la confirmación' },
+    version: { bsonType: ['int', 'long'], minimum: 0, description: 'bloqueo optimista: nadie resuelve dos veces (G2)' },
+    llamadaId: { bsonType: 'string' },
     justificacion: { bsonType: 'string', description: 'por qué el agente quiere ejecutarla' },
     riesgo: { enum: ['ESCRITURA', 'DINERO'] },
     estado: { enum: ['PENDIENTE', 'APROBADA', 'RECHAZADA', 'EJECUTADA', 'FALLIDA'] },
@@ -66,6 +72,7 @@ asegurar('confirmaciones', {
 });
 ag.confirmaciones.createIndex({ estado: 1, creadaEn: 1 });
 ag.confirmaciones.createIndex({ misionId: 1 });
+ag.confirmaciones.createIndex({ id: 1 }, { unique: true, partialFilterExpression: { id: { $type: 'string' } } });
 
 // ---------------------------------------------------------------------
 // bitacora (G3): cada paso del agente, solo se agrega
@@ -74,13 +81,14 @@ asegurar('bitacora', {
   bsonType: 'object',
   required: ['misionId', 'paso', 'tipo', 'fecha'],
   properties: {
-    misionId: { bsonType: 'objectId' },
+    misionId: { bsonType: ['objectId', 'string'], description: 'uuid de la misión (o ObjectId)' },
     paso: { bsonType: ['int', 'long'], minimum: 1 },
     tipo: { enum: ['RAZONAMIENTO', 'LLAMADA_HERRAMIENTA', 'RESULTADO_HERRAMIENTA', 'CONFIRMACION', 'ERROR', 'FIN'] },
     herramienta: { bsonType: 'string' },
     entrada: { bsonType: 'object' },
     salida: { bsonType: 'object' },
-    confirmacionId: { bsonType: 'objectId' },
+    confirmacionId: { bsonType: ['objectId', 'string'] },
+    llamadaId: { bsonType: 'string', description: 'id de la llamada a herramienta que hizo el LLM' },
     confirmadoPor: { bsonType: 'string' },
     tokens: { bsonType: 'object' },
     fecha: { bsonType: 'date' },
