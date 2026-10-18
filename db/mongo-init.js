@@ -2,10 +2,11 @@
 // CondoHub · Agentes · MongoDB (base "agentes")
 // Reglas: G1–G3, F5 (docs/negocio/reglas-de-negocio.md)
 // Uso: mongosh "mongodb://localhost:27017" db/mongo-init.js
+//      (otra base, p. ej. para pruebas: AGENTES_DB=agentes_pruebas mongosh ... db/mongo-init.js)
 // Idempotente: crea colecciones e índices solo si faltan; si existen, actualiza el validador.
 // =====================================================================
 
-const ag = db.getSiblingDB('agentes');
+const ag = db.getSiblingDB(process.env.AGENTES_DB || 'agentes');   // AGENTES_DB=agentes_pruebas para las pruebas de integración
 
 function asegurar(nombre, schema) {
   const existe = ag.getCollectionNames().includes(nombre);
@@ -104,5 +105,52 @@ asegurar('memoria', {
 });
 ag.memoria.createIndex({ ambito: 1, clave: 1 }, { unique: true });
 ag.memoria.createIndex({ expiraEn: 1 }, { expireAfterSeconds: 0, partialFilterExpression: { expiraEn: { $type: 'date' } } });
+
+// ---------------------------------------------------------------------
+// metricas e informes (G5): lo que lee y produce el agente de monitoreo. Solo se agregan.
+// ---------------------------------------------------------------------
+const metricasDoc = {
+  bsonType: 'object',
+  required: ['generadaEn', 'unidadesMorosas', 'deudaVencida', 'pagosPendientes'],
+  properties: {
+    generadaEn: { bsonType: 'date' },
+    unidadesMorosas: { bsonType: ['int', 'long'], minimum: 0 },
+    deudaVencida: { bsonType: 'decimal', description: 'Decimal128, nunca double (F10)' },
+    pagosPendientes: { bsonType: ['int', 'long'], minimum: 0 },
+    diasPagoMasAntiguo: { bsonType: ['int', 'long', 'null'], minimum: 0 },
+  },
+};
+asegurar('metricas', metricasDoc);
+ag.metricas.createIndex({ generadaEn: -1 });
+
+asegurar('informes', {
+  bsonType: 'object',
+  required: ['informeId', 'generadoEn', 'origen', 'metricas', 'alertas', 'resumen', 'lineaBase', 'notificado'],
+  properties: {
+    informeId: { bsonType: 'string', description: 'uuid del informe' },
+    generadoEn: { bsonType: 'date' },
+    origen: { enum: ['PROGRAMADO', 'MANUAL'] },
+    metricas: metricasDoc,
+    alertas: {
+      bsonType: 'array',
+      items: {
+        bsonType: 'object',
+        required: ['tipo', 'severidad', 'mensaje'],
+        properties: {
+          tipo: { enum: ['MOROSIDAD_CRECIENTE', 'DEUDA_VENCIDA_CRECIENTE', 'PAGOS_SIN_CONCILIAR'] },
+          severidad: { enum: ['MEDIA', 'ALTA'] },
+          mensaje: { bsonType: 'string' },
+          valor: { bsonType: 'string' },
+          referencia: { bsonType: 'string' },
+        },
+      },
+    },
+    resumen: { bsonType: 'string' },
+    lineaBase: { bsonType: 'bool' },
+    notificado: { bsonType: 'bool' },
+  },
+});
+ag.informes.createIndex({ informeId: 1 }, { unique: true });
+ag.informes.createIndex({ generadoEn: -1 });
 
 print('Base "agentes" lista');
