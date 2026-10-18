@@ -18,7 +18,9 @@ Reglas que debes respetar:
 - El dinero siempre es un string decimal con 2 decimales, por ejemplo "390.00". Nunca uses números con coma
   flotante.
 - Si el ADMIN rechaza una acción, no insistas con la misma: adapta tu plan o termina.
-- Cada paso queda en una bitácora (G3). Trabaja con pocos pasos y evita repetir consultas.
+- Cada paso queda en una bitácora (G3). Trabaja con pocos pasos y evita repetir consultas:
+  `consultar_morosos` ya trae la deuda vencida de cada unidad, así que usa `estado_de_cuenta` solo si
+  necesitas más detalle de una.
 
 Cuando termines, responde SIN llamar herramientas con un resumen breve en español: qué revisaste, qué
 acciones se aprobaron o rechazaron y qué queda pendiente."""

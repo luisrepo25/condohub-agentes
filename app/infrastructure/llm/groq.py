@@ -2,6 +2,8 @@
 GROQ_API_KEY."""
 
 import json
+import time
+from collections.abc import Callable
 from typing import Any
 
 import httpx
@@ -31,6 +33,19 @@ def _mensaje_api(m: Mensaje) -> dict[str, Any]:
     return {"role": m.rol, "content": m.contenido or ""}
 
 
+INTENTOS = 4  # el límite de uso de Groq (429) y los cortes (5xx) son transitorios: se reintenta
+ESPERA_MAXIMA_S = 30.0
+
+
+def _espera(respuesta: httpx.Response, intento: int) -> float:
+    """Respeta `Retry-After` si Groq lo manda; si no, espera exponencial (1, 2, 4... s), con tope de 30 s."""
+    try:
+        pedida = float(respuesta.headers.get("retry-after", ""))
+    except ValueError:
+        pedida = float(2**intento)
+    return min(max(pedida, 0.0), ESPERA_MAXIMA_S)
+
+
 class LLMGroq:
     def __init__(
         self,
@@ -39,7 +54,9 @@ class LLMGroq:
         url_base: str = "https://api.groq.com/openai",
         cliente: httpx.Client | None = None,
         tiempo_s: float = 60.0,
+        dormir: Callable[[float], None] = time.sleep,
     ) -> None:
+        self._dormir = dormir
         self._api_key = api_key
         self._modelo = modelo
         self._url_base = url_base.rstrip("/")
@@ -64,14 +81,19 @@ class LLMGroq:
             "tool_choice": "auto",
             "parallel_tool_calls": False,
         }
-        try:
-            r = self._cliente.post(
-                f"{self._url_base}/v1/chat/completions",
-                json=cuerpo,
-                headers={"Authorization": f"Bearer {self._api_key}"},
-            )
-        except httpx.HTTPError as e:
-            raise LLMNoDisponible("No se pudo conectar con el LLM") from e
+        for intento in range(INTENTOS):
+            try:
+                r = self._cliente.post(
+                    f"{self._url_base}/v1/chat/completions",
+                    json=cuerpo,
+                    headers={"Authorization": f"Bearer {self._api_key}"},
+                )
+            except httpx.HTTPError as e:
+                raise LLMNoDisponible("No se pudo conectar con el LLM") from e
+            if (r.status_code == 429 or r.status_code >= 500) and intento < INTENTOS - 1:
+                self._dormir(_espera(r, intento))
+                continue
+            break
         if r.status_code != 200:
             raise LLMNoDisponible(f"El LLM respondió HTTP {r.status_code}")
         try:

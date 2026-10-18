@@ -17,6 +17,7 @@ from app.application.herramientas import CatalogoHerramientas, Herramienta
 from app.application.prompt_mision import SISTEMA
 from app.domain.mision import (
     ConfirmacionPendiente,
+    EstadoConfirmacion,
     EstadoMision,
     Mision,
     PasoBitacora,
@@ -223,6 +224,11 @@ class EjecutarMision(_Base):
                 raise ValueError(f"Herramienta desconocida: {llamada.nombre}")
             self._catalogo.validar(llamada.nombre, llamada.argumentos)
             if herramienta.riesgo is not Riesgo.LECTURA:
+                if self._ya_rechazada(mision, herramienta, llamada):
+                    raise ValueError(
+                        f"El ADMIN ya rechazó «{herramienta.nombre}» para esa unidad en esta misión: "
+                        "no insistas."
+                    )
                 self._pedir_confirmacion(mision, herramienta, llamada)
                 return
             salida = self._catalogo.ejecutar(llamada.nombre, llamada.argumentos)
@@ -236,6 +242,16 @@ class EjecutarMision(_Base):
             llamada_id=llamada.id,
         )
         mensajes.append(Mensaje("tool", json.dumps(salida, ensure_ascii=False), llamada_id=llamada.id))
+
+    def _ya_rechazada(self, mision: Mision, herramienta: Herramienta, llamada: LlamadaHerramienta) -> bool:
+        """Un ADMIN ya rechazó esta acción para esta unidad: no se le vuelve a preguntar en la misión."""
+        unidad = llamada.argumentos.get("unidadId")
+        return any(
+            c.herramienta == herramienta.nombre
+            and c.estado is EstadoConfirmacion.RECHAZADA
+            and c.argumentos.get("unidadId") == unidad
+            for c in self._confirmaciones.de_mision(mision.id)
+        )
 
     def _pedir_confirmacion(
         self, mision: Mision, herramienta: Herramienta, llamada: LlamadaHerramienta

@@ -294,3 +294,21 @@ def test_G2_rechazada_la_solicitud_mcp_se_cancela() -> None:
 def test_G2_por_mcp_solo_se_piden_escrituras_validas(herramienta: str, argumentos: dict[str, object]) -> None:
     with pytest.raises(ArgumentosInvalidos):
         _solicitar(Mundo()).solicitar(herramienta, argumentos)
+
+
+def test_G2_lo_que_el_admin_rechazo_para_una_unidad_no_se_vuelve_a_pedir_en_la_mision() -> None:
+    otra = {"unidadId": "u2", "mensaje": "Recordatorio para la otra unidad"}
+    llm = LLMGuionado(
+        llama("enviar_recordatorio", **RECORDATORIO),  # el ADMIN lo rechaza
+        llama("enviar_recordatorio", "c2", **RECORDATORIO),  # el agente insiste con la misma unidad
+        llama("enviar_recordatorio", "c3", **otra),  # otra unidad sí se puede pedir
+    )
+    mundo = Mundo(llm)
+    _, ejecutar, _, rechazar, consultar = _caso(mundo)
+    mision_id = _lanzar(mundo)
+    rechazar.rechazar(consultar.ver(mision_id).confirmaciones[0].id, ADMIN)
+    ejecutar.ejecutar(mision_id)
+    vista = consultar.ver(mision_id)
+    assert [c.argumentos["unidadId"] for c in vista.confirmaciones] == ["u1", "u2"]  # u1 no se repitió
+    assert vista.mision.estado is EstadoMision.ESPERANDO_CONFIRMACION
+    assert "no insistas" in (llm.llamadas[2][-1].contenido or "")

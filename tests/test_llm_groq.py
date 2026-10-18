@@ -116,3 +116,61 @@ def test_G1_sin_conexion_es_llm_no_disponible() -> None:
     llm = LLMGroq("k", "m", cliente=httpx.Client(transport=httpx.MockTransport(cae)))
     with pytest.raises(LLMNoDisponible):
         llm.completar("S", [Mensaje("user", "x")], HERRAMIENTAS)
+
+
+# --- Límite de uso (429) y cortes (5xx): se reintenta con espera y se respeta Retry-After ---
+
+
+def _llm_con_respuestas(respuestas: list[httpx.Response], esperas: list[float]) -> tuple[LLMGroq, list[int]]:
+    cola, llamadas = list(respuestas), [0]
+
+    def manejador(_: httpx.Request) -> httpx.Response:
+        llamadas[0] += 1
+        return cola.pop(0)
+
+    llm = LLMGroq(
+        "k", "m", cliente=httpx.Client(transport=httpx.MockTransport(manejador)), dormir=esperas.append
+    )
+    return llm, llamadas
+
+
+def test_G1_un_429_se_reintenta_y_respeta_retry_after() -> None:
+    esperas: list[float] = []
+    llm, llamadas = _llm_con_respuestas(
+        [httpx.Response(429, headers={"retry-after": "3"}), httpx.Response(429), _ok({"content": "listo"})],
+        esperas,
+    )
+    assert llm.completar("S", [Mensaje("user", "x")], HERRAMIENTAS).texto == "listo"
+    assert llamadas[0] == 3 and esperas == [3.0, 2.0]  # Retry-After; sin él, exponencial (2**1)
+
+
+def test_G1_un_503_tambien_se_reintenta() -> None:
+    esperas: list[float] = []
+    llm, llamadas = _llm_con_respuestas([httpx.Response(503), _ok({"content": "ok"})], esperas)
+    assert llm.completar("S", [Mensaje("user", "x")], HERRAMIENTAS).texto == "ok" and llamadas[0] == 2
+
+
+def test_G1_si_el_limite_no_cede_se_rinde_tras_4_intentos() -> None:
+    esperas: list[float] = []
+    llm, llamadas = _llm_con_respuestas([httpx.Response(429)] * 4, esperas)
+    with pytest.raises(LLMNoDisponible, match="429"):
+        llm.completar("S", [Mensaje("user", "x")], HERRAMIENTAS)
+    assert llamadas[0] == 4 and len(esperas) == 3
+
+
+def test_G1_la_espera_nunca_pasa_de_30_segundos() -> None:
+    esperas: list[float] = []
+    llm, _ = _llm_con_respuestas(
+        [httpx.Response(429, headers={"retry-after": "600"}), _ok({"content": "x"})], esperas
+    )
+    llm.completar("S", [Mensaje("user", "x")], HERRAMIENTAS)
+    assert esperas == [30.0]
+
+
+@pytest.mark.parametrize("codigo", [400, 401, 403, 404])
+def test_G1_los_errores_del_cliente_no_se_reintentan(codigo: int) -> None:
+    esperas: list[float] = []
+    llm, llamadas = _llm_con_respuestas([httpx.Response(codigo), _ok({"content": "x"})], esperas)
+    with pytest.raises(LLMNoDisponible):
+        llm.completar("S", [Mensaje("user", "x")], HERRAMIENTAS)
+    assert llamadas[0] == 1 and esperas == []
