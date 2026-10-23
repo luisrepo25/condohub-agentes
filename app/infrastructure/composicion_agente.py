@@ -23,10 +23,11 @@ from app.application.mision import (
 )
 from app.config_agente import ConfigAgente
 from app.config_monitoreo import ConfigMonitoreo
-from app.infrastructure.acciones import RecargosSinMutacion, RecordatoriosN8n
+from app.infrastructure.acciones import RecordatoriosN8n
 from app.infrastructure.gestion_graphql import GestionGraphQL
 from app.infrastructure.llm.groq import LLMGroq
 from app.infrastructure.memoria_misiones import BitacoraEnMemoria, ConfirmacionesEnMemoria, MisionesEnMemoria
+from app.infrastructure.recargos_gestion import RecargosGestion
 from app.infrastructure.token_servicio import TokenServicio
 
 
@@ -81,7 +82,7 @@ def construir_agente(base: ConfigMonitoreo, config: ConfigAgente) -> Agente:
     catalogo = CatalogoCondohub(
         GestionGraphQL(base.gestion_graphql_url, token),
         RecordatoriosN8n(config.n8n_webhook_recordatorios),
-        RecargosSinMutacion(),
+        RecargosGestion(base.gestion_graphql_url, token),
         config.recargo_mensual,
     )
     llm: LLMPort = (
