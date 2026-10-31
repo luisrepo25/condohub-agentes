@@ -97,11 +97,17 @@ class LLMGroq:
         if r.status_code != 200:
             raise LLMNoDisponible(f"El LLM respondió HTTP {r.status_code}")
         try:
-            mensaje = r.json()["choices"][0]["message"]
+            eleccion = r.json()["choices"][0]
+            mensaje = eleccion["message"]
             llamadas = mensaje.get("tool_calls") or []
             contenido = mensaje.get("content")
             texto = str(contenido) if contenido else None
             if not llamadas:
+                if not texto and eleccion.get("finish_reason") == "length":
+                    # Un modelo razonador puede gastar todos sus tokens pensando: no es un fin normal.
+                    raise LLMNoDisponible(
+                        "El LLM agotó sus tokens (finish_reason=length): prueba otro GROQ_MODELO"
+                    )
                 return RespuestaLLM(texto=texto)
             primera = llamadas[0]
             argumentos = json.loads(primera["function"]["arguments"] or "{}")

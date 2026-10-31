@@ -174,3 +174,27 @@ def test_G1_los_errores_del_cliente_no_se_reintentan(codigo: int) -> None:
     with pytest.raises(LLMNoDisponible):
         llm.completar("S", [Mensaje("user", "x")], HERRAMIENTAS)
     assert llamadas[0] == 1 and esperas == []
+
+
+# ------------------------------------------------------------------ respuesta truncada (finish_reason=length)
+
+
+def _truncada(mensaje: dict[str, Any]) -> httpx.Response:
+    return httpx.Response(200, json={"choices": [{"finish_reason": "length", "message": mensaje}]})
+
+
+def test_G1_un_modelo_que_agota_sus_tokens_sin_responder_es_un_error_claro_y_no_un_fin_normal() -> None:
+    # Un modelo razonador puede gastar todo su presupuesto pensando y devolver contenido vacío y sin llamada:
+    # eso NO es «terminé», es una respuesta inutilizable que debe poder diagnosticarse.
+    llm = _llm(_truncada({"role": "assistant", "content": ""}))
+
+    with pytest.raises(LLMNoDisponible) as e:
+        llm.completar("S", [Mensaje("user", "x")], HERRAMIENTAS)
+
+    assert "length" in str(e.value) and "GROQ_MODELO" in str(e.value)
+
+
+def test_G1_un_resumen_cortado_por_el_limite_pero_con_texto_se_conserva() -> None:
+    r = _llm(_truncada({"content": "Resumen parcial"})).completar("S", [Mensaje("user", "x")], HERRAMIENTAS)
+
+    assert r.texto == "Resumen parcial" and r.llamada is None
