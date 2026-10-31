@@ -82,4 +82,15 @@ def crear_servidor(agente: Agente) -> MCPServer:
     def enviar_recordatorio(unidadId: str, mensaje: str) -> dict[str, Any]:  # noqa: N803
         return _pendiente(agente, "enviar_recordatorio", {"unidadId": unidadId, "mensaje": mensaje})
 
+    if agente.catalogo.obtener("consultar_reservas") is not None:  # solo con RESERVAS_URL
+
+        @servidor.tool(name="consultar_reservas", description=descripcion("consultar_reservas"))
+        def consultar_reservas(unidadId: str | None = None, estado: str | None = None) -> dict[str, Any]:  # noqa: N803
+            filtros = {k: v for k, v in (("unidadId", unidadId), ("estado", estado)) if v is not None}
+            return _lectura(agente, "consultar_reservas", filtros)
+
+        @servidor.tool(name="resumen_de_unidad", description=descripcion("resumen_de_unidad"))
+        def resumen_de_unidad(unidadId: str) -> dict[str, Any]:  # noqa: N803
+            return _lectura(agente, "resumen_de_unidad", {"unidadId": unidadId})
+
     return servidor

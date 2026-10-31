@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from app.application.herramientas import CatalogoCondohub, CatalogoHerramientas, Herramienta
+from app.application.herramientas_reservas import CatalogoConReservas
 from app.application.mision import (
     BitacoraRepository,
     ConfirmacionRepository,
@@ -28,6 +29,7 @@ from app.infrastructure.gestion_graphql import GestionGraphQL
 from app.infrastructure.llm.groq import LLMGroq
 from app.infrastructure.memoria_misiones import BitacoraEnMemoria, ConfirmacionesEnMemoria, MisionesEnMemoria
 from app.infrastructure.recargos_gestion import RecargosGestion
+from app.infrastructure.reservas_http import ReservasHttp
 from app.infrastructure.token_servicio import TokenServicio
 
 
@@ -79,12 +81,14 @@ def _repositorios(
 def construir_agente(base: ConfigMonitoreo, config: ConfigAgente) -> Agente:
     misiones, confirmaciones, bitacora = _repositorios(base)
     token = TokenServicio(base.keycloak_token_url, base.servicios_client_id, base.servicios_client_secret)
-    catalogo = CatalogoCondohub(
+    catalogo: CatalogoHerramientas = CatalogoCondohub(
         GestionGraphQL(base.gestion_graphql_url, token),
         RecordatoriosN8n(config.n8n_webhook_recordatorios),
         RecargosGestion(base.gestion_graphql_url, token),
         config.recargo_mensual,
     )
+    if config.reservas_url:  # E6, C2: lectura de Reservas y reporte consolidado por composición de APIs
+        catalogo = CatalogoConReservas(catalogo, ReservasHttp(config.reservas_url, token))
     llm: LLMPort = (
         LLMGroq(config.groq_api_key, config.groq_modelo, config.groq_url_base)
         if config.llm_configurado
