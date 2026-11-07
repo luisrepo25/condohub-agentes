@@ -119,3 +119,5 @@ El agente y el servidor MCP ven también **Reservas**, solo en lectura (G2): `co
 ## Código funcional protegido (obligatorio)
 
 Código en `main` con tests en verde **no se reescribe, refactoriza, renombra ni reformatea** si la tarea no lo pide explícitamente. Lo nuevo se agrega extendiendo (clases, métodos o archivos nuevos). Si es inevitable tocar código funcional, **detente antes de editar**, explica qué archivo/líneas y por qué, y espera confirmación; luego haz el mínimo diff. Nunca edites tests existentes para que pase código nuevo. Corre los tests antes y después: todo lo que pasaba debe seguir pasando. En el resumen, lista cada archivo existente que modificaste.
+
+**Fecha de hoy en el prompt (06/11/2026):** el LLM no sabe qué día es y, sin ayuda, inventaba el día de la semana y el mes de «este fin de semana» o «el mes». `app/application/fecha_actual.py` (`sistema_con_fecha`) agrega «Hoy es <día> <fecha> (UTC)» al prompt del sistema en cada vuelta de `EjecutarMision._bucle`, con el reloj de la misión. Pruebas: `tests/test_fecha_actual.py`.

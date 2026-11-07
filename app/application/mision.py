@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import Any, Protocol
 from uuid import UUID
 
+from app.application.fecha_actual import sistema_con_fecha
 from app.application.herramientas import CatalogoHerramientas, Herramienta
 from app.application.prompt_mision import SISTEMA
 from app.domain.mision import (
@@ -193,7 +194,8 @@ class EjecutarMision(_Base):
                 mision.marcar_incompleta(motivo, self._reloj.ahora())
                 break
             try:
-                respuesta = self._llm.completar(SISTEMA, mensajes, self._catalogo.listar())
+                sistema = sistema_con_fecha(SISTEMA, self._reloj.ahora())
+                respuesta = self._llm.completar(sistema, mensajes, self._catalogo.listar())
             except LLMNoDisponible as e:
                 self._registrar(mision.id, TipoPaso.ERROR, salida={"error": str(e)})
                 mision.fallar(f"El LLM no respondió: {e}", self._reloj.ahora())
