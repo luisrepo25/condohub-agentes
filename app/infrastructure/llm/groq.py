@@ -10,6 +10,7 @@ import httpx
 
 from app.application.herramientas import Herramienta
 from app.application.mision import LlamadaHerramienta, LLMNoDisponible, Mensaje, RespuestaLLM
+from app.infrastructure.llm.claves_groq import CODIGOS_DE_CLAVE_AGOTADA, ClavesGroq
 
 
 def _mensaje_api(m: Mensaje) -> dict[str, Any]:
@@ -57,7 +58,7 @@ class LLMGroq:
         dormir: Callable[[float], None] = time.sleep,
     ) -> None:
         self._dormir = dormir
-        self._api_key = api_key
+        self._claves = ClavesGroq(api_key)  # una clave, o varias separadas por comas
         self._modelo = modelo
         self._url_base = url_base.rstrip("/")
         self._cliente = cliente or httpx.Client(timeout=tiempo_s)
@@ -65,7 +66,7 @@ class LLMGroq:
     def completar(
         self, sistema: str, mensajes: list[Mensaje], herramientas: list[Herramienta]
     ) -> RespuestaLLM:
-        if not self._api_key:
+        if not self._claves:
             raise LLMNoDisponible("El LLM no está configurado (falta GROQ_API_KEY)")
         cuerpo = {
             "model": self._modelo,
@@ -81,17 +82,25 @@ class LLMGroq:
             "tool_choice": "auto",
             "parallel_tool_calls": False,
         }
-        for intento in range(INTENTOS):
+        intento = 0
+        rotadas = 0
+        while True:
             try:
                 r = self._cliente.post(
                     f"{self._url_base}/v1/chat/completions",
                     json=cuerpo,
-                    headers={"Authorization": f"Bearer {self._api_key}"},
+                    headers={"Authorization": f"Bearer {self._claves.actual()}"},
                 )
             except httpx.HTTPError as e:
                 raise LLMNoDisponible("No se pudo conectar con el LLM") from e
+            if r.status_code in CODIGOS_DE_CLAVE_AGOTADA and rotadas < len(self._claves) - 1:
+                self._claves.rotar()  # otra clave, sin esperar
+                rotadas += 1
+                continue
             if (r.status_code == 429 or r.status_code >= 500) and intento < INTENTOS - 1:
                 self._dormir(_espera(r, intento))
+                intento += 1
+                rotadas = 0
                 continue
             break
         if r.status_code != 200:
