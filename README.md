@@ -20,6 +20,6 @@ Servidor MCP (stdio) para clientes como Claude Desktop; con `PERSISTENCIA=mongo`
 .venv\Scripts\python -m app.infrastructure.mcp_server
 ```
 
-Misiones con LLM: definir `GROQ_API_KEY`; sin ella `POST /misiones` responde 503.
+Misiones con LLM: definir `GROQ_API_KEY` (puede llevar varias claves separadas por coma para rotar si una agota su límite); sin ella `POST /misiones` responde 503.
 
 Arquitectura, reglas, estado y variables: `CLAUDE.md`.
