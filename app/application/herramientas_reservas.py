@@ -45,7 +45,11 @@ HERRAMIENTAS_RESERVAS = (
         "con su "
         "estado. Solo lectura.",
         _objeto(
-            {"unidadId": _UNIDAD, "estado": {"type": "string", "enum": list(ESTADOS)}},
+            # «o nulo»: el modelo manda null para «sin filtro» y Groq rechaza (400) lo que no cumple.
+            {
+                "unidadId": {**_UNIDAD, "type": ["string", "null"]},
+                "estado": {"type": ["string", "null"], "enum": [*ESTADOS, None]},
+            },
             [],
         ),
         Riesgo.LECTURA,
@@ -59,6 +63,11 @@ HERRAMIENTAS_RESERVAS = (
         Riesgo.LECTURA,
     ),
 )
+
+
+def _sin_nulos(argumentos: dict[str, Any]) -> dict[str, Any]:
+    """Un filtro nulo significa «sin filtro»: se trata igual que si no se hubiera enviado."""
+    return {k: v for k, v in argumentos.items() if v is not None}
 
 
 def _reserva(r: ReservaDato) -> dict[str, Any]:
@@ -93,7 +102,9 @@ class CatalogoConReservas:
             return self._base.validar(nombre, argumentos)
         if nombre == "resumen_de_unidad":
             _texto(argumentos, "unidadId", 100)
-        elif "estado" in argumentos and argumentos["estado"] not in ESTADOS:
+            return None
+        argumentos = _sin_nulos(argumentos)
+        if "estado" in argumentos and argumentos["estado"] not in ESTADOS:
             raise ValueError(f"«estado» debe ser uno de {', '.join(ESTADOS)}")
         return None
 
@@ -108,6 +119,7 @@ class CatalogoConReservas:
         )
 
     def _consultar(self, a: dict[str, Any]) -> dict[str, Any]:
+        a = _sin_nulos(a)
         unidad = _texto(a, "unidadId", 100) if "unidadId" in a else None
         reservas = self._reservas.reservas_de(unidad, a.get("estado"))
         limite = _entero(a, "limite", 50, 1, 50)
