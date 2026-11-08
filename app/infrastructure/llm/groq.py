@@ -47,6 +47,27 @@ def _espera(respuesta: httpx.Response, intento: int) -> float:
     return min(max(pedida, 0.0), ESPERA_MAXIMA_S)
 
 
+def _error_de_groq(respuesta: httpx.Response) -> dict[str, Any]:
+    try:
+        error = respuesta.json().get("error", {})
+        return error if isinstance(error, dict) else {}
+    except ValueError:
+        return {}
+
+
+def _generacion_fallida(respuesta: httpx.Response) -> bool:
+    """400 `tool_use_failed`: el modelo armó una llamada fuera del esquema. Es intermitente: se reintenta."""
+    return respuesta.status_code == 400 and _error_de_groq(respuesta).get("code") == "tool_use_failed"
+
+
+def _mensaje_de_error(respuesta: httpx.Response) -> str:
+    """El código HTTP y, si Groq lo dio, el motivo corto (nunca el cuerpo ni la generación del modelo)."""
+    base = f"El LLM respondió HTTP {respuesta.status_code}"
+    error = _error_de_groq(respuesta)
+    motivo = ": ".join(str(error[k])[:200] for k in ("code", "message") if error.get(k))
+    return f"{base}: {motivo}" if motivo else base
+
+
 class LLMGroq:
     def __init__(
         self,
@@ -97,14 +118,15 @@ class LLMGroq:
                 self._claves.rotar()  # otra clave, sin esperar
                 rotadas += 1
                 continue
-            if (r.status_code == 429 or r.status_code >= 500) and intento < INTENTOS - 1:
+            transitorio = r.status_code == 429 or r.status_code >= 500 or _generacion_fallida(r)
+            if transitorio and intento < INTENTOS - 1:
                 self._dormir(_espera(r, intento))
                 intento += 1
                 rotadas = 0
                 continue
             break
         if r.status_code != 200:
-            raise LLMNoDisponible(f"El LLM respondió HTTP {r.status_code}")
+            raise LLMNoDisponible(_mensaje_de_error(r))
         try:
             eleccion = r.json()["choices"][0]
             mensaje = eleccion["message"]
